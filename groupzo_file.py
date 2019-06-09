@@ -55,9 +55,9 @@ def insert_into_groups_and_members(user_id,group_id):
     mydb.commit()
     update_member_count()
 
-def insert_into_mygroups(group_name,description):
-    sql="insert into mygroups(group_name,description) values(%s,%s)"
-    val=(group_name,description)
+def insert_into_mygroups(group_name,description,admin):
+    sql="insert into mygroups(group_name,description,admin) values(%s,%s,%s)"
+    val=(group_name,description,admin)
     mycursor.execute(sql,val)
     mydb.commit()
 
@@ -217,11 +217,11 @@ def view_groups(email):
         JOIN mygroups mg ON mg.group_id=gm.group_id where email=%s'''
     mycursor.execute(sql, (email,))
     myresult=mycursor.fetchall()
-    if (mycursor.rowcount!=0):
+    if (mycursor.rowcount==0):
+        print("You are not a member of any groups\n")
+    else:
         for row in myresult:
             print(row)
-    else:
-        print("No groups\n")
 
 
 def view_profile(email):
@@ -350,11 +350,14 @@ def accept_pending_requests(email):
     full_name_of_user=getfull_nameFromEmail(email)
     if check_pending_requests_of_user(email)==1:
         name=input("Enter the name of user whose request you want to accept\n")
-        full_name=getfull_nameFromName(name)
-        insert_into_friends(full_name_of_user,full_name)
-        insert_into_friends(full_name,full_name_of_user)
-        delete_from_pending_requests(full_name_of_user,full_name)
-        print(full_name_of_user+" and " +full_name+" are now friends\n")
+        if member_exist(name)==1:
+            full_name=getfull_nameFromName(name)
+            insert_into_friends(full_name_of_user,full_name)
+            insert_into_friends(full_name,full_name_of_user)
+            delete_from_pending_requests(full_name_of_user,full_name)
+            print(full_name_of_user+" and " +full_name+" are now friends\n")
+        else:
+            print("User not found\n")
     else:
         print("You don't have any pending requests\n")
 
@@ -418,8 +421,11 @@ def send_friend_request(email):
         if (ch==0):
             p=check_pending_request(full_name,full_name_of_person)
             if (p==0):
-                insert_into_pending_requests(full_name_of_person,full_name)
-                print("Friend request sent to "+full_name_of_person)
+                if (full_name!=full_name_of_person):
+                    insert_into_pending_requests(full_name_of_person,full_name)
+                    print("Friend request sent to "+full_name_of_person)
+                else:
+                    print("You cannot send friend request to yourself\n")
             else:
                 print("You have already sent friend request to "+name)
         else:
@@ -480,7 +486,10 @@ def home_page(email):
             break
         elif (choice==2):
             name=input("Enter the name of user :\n")
-            search_user(name,email)
+            if (member_exist(name)):
+                search_user(name,email)
+            else:
+                print("User not found\n")
             redirect_to_home_page(email)
             break
         elif (choice==3):
@@ -582,54 +591,99 @@ def display_groups():
         for index,row in enumerate(myresult,start=1):
             print(index,row)
 
+def group_admin(group_name):
+    sql="select admin from mygroups where group_name=%s"
+    mycursor.execute(sql,(group_name,))
+    for row in mycursor.fetchone():
+        return row
+
+def view_groups_admin(email):
+    user=getfull_nameFromEmail(email)
+    sql="select group_name,description from mygroups where admin=%s"
+    mycursor.execute(sql,(user,))
+    myresult=mycursor.fetchall()
+    if (mycursor.rowcount==0):
+        print("You are not admin of any groups\n")
+    else:
+        for row in myresult:
+            print(row)
+
+def check_group_member(group_name,user):
+    sql="select user_id from groups_and_members where user_id=(select user_id from members where full_name=%s) and group_id=(select group_id from mygroups where group_name=%s)"
+    mycursor.execute(sql,(user,group_name))
+    if (mycursor.rowcount==0):
+        return 0 #the user does not exist in the group
+    else:
+        return 1 #the user exists in the given group
+
 
 def groups_section(email):
+    user=getfull_nameFromEmail(email)
     print("choose from the following\n")
     print(" 1. View groups \n 2. Create a new group\n 3. Remove an existing group\n 4. Add member to a group\n 5. Remove member from a group\n 6. Go back to the home page")
     choice=int(input())
     if (choice==1):
-        print("1. View groups that you are a part of ")
-        print("2. View all groups")
+        print("1. View groups that you are a member of ")
+        print("2. View groups that you are admin of ")
+        print("3. View all groups")
         ch=int(input())
         if (ch==1):
             view_groups(email)
-        else:
+        elif (ch==2):
+            view_groups_admin(email)
+        elif (ch==3):
             display_groups()
         redirect_to_groups_section(email)
     elif (choice==2):
         group_name=input("Enter the name of the group\n")
         group_des=input("Enter the description of the group\n")
-        insert_into_mygroups(group_name,group_des)
+        insert_into_mygroups(group_name,group_des,user)
         print("Group sucessfully created\n")
         redirect_to_groups_section(email)
     elif (choice==3):
         group_name=input("Enter the name of the group you want to remove\n")
         if (check_group(group_name)==1):
-            delete_from_mygroups(group_name)
-            print("Group successfully deleted\n")
+            if (user==group_admin(group_name)):
+                delete_from_mygroups(group_name)
+                print("Group successfully deleted\n")
+            else:
+                print("You are not authorized to delete this group\n")
         else:
             print("No such group exists\n")
         redirect_to_groups_section(email)
     elif (choice==4):
-        name=input("Enter the name of the person you want to add to the group\n")
-        if (member_exist(name) == 1):
-            group_name = input("Enter the group name\n")
-            if (check_group(group_name) == 1):
-                add_member(group_name, name)
-                print(name + " has been added to " + group_name)
+        name=input("Enter the name of the group\n")
+        if (check_group(name)==1):
+            if (user!=group_admin(name)):
+                print("You are not authorized to add members to this group\n")
             else:
-                print("No such group exists\n")
+                person=input("Enter the name of the person you want to add\n")
+                name_user=getfull_nameFromName(person)
+                if (member_exist(name_user)==1):
+                    if (check_group_member(name,name_user)==0):
+                        add_member(name, name_user)
+                        print(name_user + " has been added to " + name)
+                    else:
+                        print(name_user+" is already a member of the group "+name)
+                else:
+                    print("User does not exist\n")
         else:
-            print("No such user exists\n")
-
+            print("Group does not exist\n")
         redirect_to_groups_section(email)
     elif (choice==5):
-        name = input("Enter the name of the person you want to remove from the group\n")
+        person=input("Enter the name of the person you want to remove from the group\n")
+        name=getfull_nameFromName(person)
         if (member_exist(name)==1):
             group_name = input("Enter the group name\n")
             if (check_group(group_name)==1):
-                remove_member(group_name,name)
-                print(name+" has been removed from "+group_name)
+                if (group_admin(group_name)==user):
+                    if (check_group_member(group_name,name))==1:
+                        remove_member(group_name,name)
+                        print(name+" has been removed from "+group_name)
+                    else:
+                        print(name+ "is not a member of the group "+group_name)
+                else:
+                    print("You are not authorized to remove members from this group\n")
             else:
                 print("Group does not exist\n")
         else:
@@ -671,6 +725,7 @@ def redirect_to_settings(email):
     else:
         print("invalid choice\n enter again\n")
         redirect_to_settings(email)
+
 
 def main():
     welcome()
