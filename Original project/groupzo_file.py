@@ -60,12 +60,25 @@ def insert_into_mygroups(group_name,description,admin):
     val=(group_name,description,admin)
     mycursor.execute(sql,val)
     mydb.commit()
+    sql = "insert into groups_and_members(user_id,group_id) values((select user_id from members where full_name=%s),(select group_id from mygroups where group_name=%s))"
+    val = (admin, group_name)
+    mycursor.execute(sql, val)
+    mydb.commit()
+    update_member_count()
 
 
 def truncate_tables(table_name):
     sql="truncate table %s" % table_name
     mycursor.execute(sql)
     mydb.commit()
+
+def truncate_all():
+    truncate_tables('members')
+    truncate_tables('friends')
+    truncate_tables('pending_requests')
+    truncate_tables('mygroups')
+    truncate_tables('groups_and_members')
+
 
 def display_table(table_name):
     sql = " select * from %s "% table_name
@@ -222,7 +235,6 @@ def view_groups(email):
     else:
         for row in myresult:
             print(row)
-
 
 def view_profile(email):
     print("FIRST NAME:")
@@ -520,7 +532,7 @@ def friends_section(email):
         redirect_to_friends_section(email)
 
     elif (choice == 2):
-        ch = int(input("1. View sent requests\n2. Cancel sent requests\n3. Send request\n"))
+        ch = int(input(" 1.View sent requests\n2. Cancel sent requests\n3. Send request\n"))
         if (ch == 1):
             view_sent_requests(email)
             redirect_to_friends_section(email)
@@ -617,6 +629,8 @@ def check_group_member(group_name,user):
         return 1 #the user exists in the given group
 
 
+
+
 def groups_section(email):
     user=getfull_nameFromEmail(email)
     print("choose from the following\n")
@@ -639,6 +653,7 @@ def groups_section(email):
         group_des=input("Enter the description of the group\n")
         insert_into_mygroups(group_name,group_des,user)
         print("Group sucessfully created\n")
+        update_member_count()
         redirect_to_groups_section(email)
     elif (choice==3):
         group_name=input("Enter the name of the group you want to remove\n")
@@ -646,6 +661,7 @@ def groups_section(email):
             if (user==group_admin(group_name)):
                 delete_from_mygroups(group_name)
                 print("Group successfully deleted\n")
+                update_member_count()
             else:
                 print("You are not authorized to delete this group\n")
         else:
@@ -725,6 +741,7 @@ def redirect_to_settings(email):
     else:
         print("invalid choice\n enter again\n")
         redirect_to_settings(email)
+
 
 
 def main():
