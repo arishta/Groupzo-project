@@ -45,3 +45,4 @@ class Database:
     def update_email(self,email,new_email):
         self.cur.execute("update members set email=%s where email=%s",(email,new_email))
         self.mydb.commit()
+
